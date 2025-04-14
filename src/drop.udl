@@ -51,9 +51,13 @@ dictionary FileOutput {
   sequence<u8> data;
 };
 
-namespace drop {
+interface Drop {
+  [Throws=Error, Async]
+  constructor();
   [Throws=Error, Async]
   SendFilesResponse send_files(SendFilesRequest request);
   [Throws=Error, Async]
   ReceiveFilesResponse receive_files(ReceiveFilesRequest request);
 };
+
+namespace drop {};
