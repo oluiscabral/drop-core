@@ -1,0 +1,19 @@
+[package]
+name = "drop-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+name = "drop"
+
+[dependencies]
+iroh = "0.34.1"
+iroh-base = "0.34.1"
+iroh-blobs = { version = "0.34.1", features = ["rpc"] }
+tokio = "1.44.2"
+uniffi = { version = "0.29.1", features = [ "cli" ] }
+thiserror = "1.0"
+
+[build-dependencies]
+uniffi = { version = "0.29.1", features = [ "build" ] }

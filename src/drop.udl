@@ -1,0 +1,59 @@
+[Error]
+enum Error {
+    "InitializeEnvironmentError",
+    "ReadFileDataError",
+    "CreateCollectionError",
+    "CreateTicketError",
+    "ParseTicketError",
+    "InvalidTicketFormatError",
+    "InitializeDownloadError",
+    "FinishDownloadError",
+    "RetrieveCollectionError",
+};
+
+dictionary SendFilesRequest {
+  sequence<FilePayload> files;
+};
+
+dictionary FilePayload {
+  string name;
+  sequence<u8> data;
+};
+
+dictionary SendFilesResponse {
+  TicketOutput ticket;
+};
+
+dictionary TicketOutput {
+  string id;
+};
+
+dictionary ReceiveFilesRequest {
+  TicketPayload ticket;
+};
+
+dictionary TicketPayload {
+  string id;
+};
+
+dictionary ReceiveFilesResponse {
+  BagOutput bag;
+};
+
+dictionary BagOutput {
+  TicketOutput ticket;
+  sequence<FileOutput> files;
+};
+
+dictionary FileOutput {
+  string id;
+  string name;
+  sequence<u8> data;
+};
+
+namespace drop {
+  [Throws=Error, Async]
+  SendFilesResponse send_files(SendFilesRequest request);
+  [Throws=Error, Async]
+  ReceiveFilesResponse receive_files(ReceiveFilesRequest request);
+};
