@@ -21,27 +21,16 @@ dictionary FilePayload {
 };
 
 dictionary SendFilesResponse {
-  TicketOutput ticket;
-};
-
-dictionary TicketOutput {
-  string id;
+  string ticket;
+  u8 confirmation;
 };
 
 dictionary ReceiveFilesRequest {
-  TicketPayload ticket;
-};
-
-dictionary TicketPayload {
-  string id;
+  string ticket;
+  u8 confirmation;
 };
 
 dictionary ReceiveFilesResponse {
-  BagOutput bag;
-};
-
-dictionary BagOutput {
-  TicketOutput ticket;
   sequence<FileOutput> files;
 };
 
@@ -52,7 +41,7 @@ dictionary FileOutput {
 };
 
 interface Drop {
-  [Throws=Error, Async]
+  [Throws=Error]
   constructor();
   [Throws=Error, Async]
   SendFilesResponse send_files(SendFilesRequest request);
