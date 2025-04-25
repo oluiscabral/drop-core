@@ -129,10 +129,14 @@ impl ProtocolHandler for SendFilesHandler {
         let request = self.request.clone();
         let subscribers = self.subscribers.clone();
         return Box::pin(async move {
+            println!("EXECUTING THE CONNECTION ACCEPTED HANDLER");
             // TODO: ERROR HANDLING
-            let mut bi = connection.open_bi().await?;
-            // TODO: SENDS MY PROFILE
+            let mut bi = connection.accept_bi().await?;
+            println!("ACCEPTED BI!");
+            bi.1.read(&mut vec![]).await?;
+            println!("READ 'HANDSHAKE'");
             // TODO: RECEIVES THEIR PROFILE AND NOTIFY SUBSCRIBERS
+            // TODO: SENDS MY PROFILE
             for f in &request.files {
                 // TODO: SENDS FILE IN SMALL PACKETS, WITH A HEADER CONTAINING THEIR METADATA
                 let id = Uuid::new_v4().to_string();
@@ -157,12 +161,27 @@ impl ProtocolHandler for SendFilesHandler {
                     let serialized_projection = serde_json::to_vec(&projection).unwrap();
                     let serialized_projection_bytes =
                         uniffi::deps::bytes::Bytes::copy_from_slice(&serialized_projection);
+
+                    subscribers.iter().for_each(|subscriber| {
+                        subscriber.notify(SendFilesEvent::Sending {
+                                // TODO
+                            });
+                    });
+
                     // TODO: ERROR HANDLING
                     bi.0.write_chunk(serialized_projection_bytes).await?;
+
+                    subscribers.iter().for_each(|subscriber| {
+                        subscriber.notify(SendFilesEvent::Sent {
+                            // TODO
+                        });
+                    });
 
                     offset = end;
                 }
             }
+            bi.0.finish()?;
+            bi.0.stopped().await?;
             // TODO: CLOSE THE CONNECTION
             return Ok(());
         });
@@ -192,8 +211,38 @@ pub enum SendFilesEvent {
     },
 }
 
+impl std::fmt::Display for SendFilesEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SendFilesEvent::Connecting {} => f.write_str("connecting"),
+            SendFilesEvent::Connected {} => f.write_str("connected"),
+            SendFilesEvent::Sending {} => f.write_str("sending"),
+            SendFilesEvent::Sent {} => f.write_str("sent"),
+            SendFilesEvent::Closed {} => f.write_str("closed"),
+        }
+    }
+}
+
+pub enum ReceiveFilesEvent {
+    RECEIVING {
+        // TODO
+    },
+}
+
+impl std::fmt::Display for ReceiveFilesEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ReceiveFilesEvent::RECEIVING {} => f.write_str("receiving"),
+        }
+    }
+}
+
 pub trait SendFilesSubscriber: Send + Sync + std::fmt::Debug {
     fn notify(&self, event: SendFilesEvent) -> ();
+}
+
+pub trait ReceiveFilesSubscriber: Send + Sync + std::fmt::Debug {
+    fn notify(&self, event: ReceiveFilesEvent) -> ();
 }
 
 struct SendFilesResources {
@@ -201,8 +250,13 @@ struct SendFilesResources {
     configurations: Vec<SendFilesConfiguration>,
 }
 
+struct ReceiveFilesResources {
+    subscribers: Vec<Arc<dyn ReceiveFilesSubscriber>>,
+}
+
 pub struct Drop {
     send_files_resources: RwLock<SendFilesResources>,
+    receive_files_resources: RwLock<ReceiveFilesResources>,
 }
 
 impl Drop {
@@ -212,11 +266,22 @@ impl Drop {
                 subscribers: Vec::new(),
                 configurations: Vec::new(),
             }),
+            receive_files_resources: RwLock::new(ReceiveFilesResources {
+                subscribers: Vec::new(),
+            }),
         });
     }
 
-    fn subscribe_to_send_files(&self, subscriber: Arc<dyn SendFilesSubscriber>) -> () {
+    pub fn subscribe_to_send_files(&self, subscriber: Arc<dyn SendFilesSubscriber>) -> () {
         self.send_files_resources
+            .write()
+            .unwrap()
+            .subscribers
+            .push(subscriber);
+    }
+
+    pub fn subscribe_to_receive_files(&self, subscriber: Arc<dyn ReceiveFilesSubscriber>) -> () {
+        self.receive_files_resources
             .write()
             .unwrap()
             .subscribers
@@ -296,7 +361,7 @@ impl Drop {
             .bind()
             .await
             .map_err(|e| {
-                eprintln!("{}", e.to_string());
+                eprintln!("endpoint error {}", e.to_string());
                 // TODO: REVIEW ERROR NAME
                 return Error::InitializeEnvironmentError;
             })?;
@@ -305,19 +370,73 @@ impl Drop {
             .connect(ticket, &[request.confirmation])
             .await
             .map_err(|e| {
-                eprintln!("{}", e.to_string());
+                eprintln!("connection error {}", e.to_string());
                 // TODO: UPDATE ERROR NAME
                 return Error::InitializeDownloadError;
             })?;
 
-        // TODO: PROPERLY RECEIVE FILES
-        println!(
-            "RECEIVING FILES FROM '{}'",
-            connection.remote_node_id().unwrap()
-        );
+        let mut bi = connection.open_bi().await.map_err(|e| {
+            eprintln!("bi error {}", e.to_string());
+            // TODO: UPDATE ERROR NAME
+            return Error::InitializeDownloadError;
+        })?;
 
-        // TODO
-        return Ok(ReceiveFilesResponse { files: Vec::new() });
+        bi.0.write_all(&[0]).await.map_err(|e| {
+            eprintln!("initial bi write error {}", e.to_string());
+            // TODO: UPDATE ERROR NAME
+            return Error::InitializeDownloadError;
+        })?;
+        bi.0.finish().map_err(|e| {
+            eprintln!("finish bi write error {}", e.to_string());
+            // TODO: UPDATE ERROR NAME
+            return Error::InitializeDownloadError;
+        })?;
+
+        // TODO: SEND MY PROFILE
+        // TODO: RECEIVES THEIR PROFILE (AND POSSIBLY CHUNK SIZE??)
+        let chunk_len = 1024; // TODO: flexibilize chunk size
+        let mut files: Vec<FileOutput> = Vec::new();
+        loop {
+            let maybe_chunk = bi.1.read_chunk(chunk_len, true).await.map_err(|e| {
+                eprintln!("read chunk error {}", e.to_string());
+                // TODO: UPDATE ERROR NAME
+                return Error::InitializeDownloadError;
+            })?;
+            if maybe_chunk.is_none() {
+                break;
+            }
+            let chunk = maybe_chunk.unwrap();
+            let projection: FileProjection = serde_json::from_slice(&chunk.bytes).map_err(|e| {
+                eprintln!("deserializing projection error {}", e.to_string());
+                // TODO: UPDATE ERROR NAME
+                return Error::InitializeDownloadError;
+            })?;
+            self.receive_files_resources
+                .read()
+                .unwrap()
+                .subscribers
+                .iter()
+                .for_each(|s| {
+                    s.notify(ReceiveFilesEvent::RECEIVING {
+                    // TODO
+                });
+                });
+
+            let maybe_file = files.iter_mut().find(|f| f.id == projection.id);
+            if maybe_file.is_some() {
+                let file = maybe_file.unwrap();
+                file.data.append(&mut projection.data.clone());
+            } else {
+                let file = FileOutput {
+                    id: projection.id.clone(),
+                    name: projection.file.name,
+                    data: projection.data.clone(),
+                };
+                files.push(file);
+            }
+        }
+
+        return Ok(ReceiveFilesResponse { files });
     }
 }
 
