@@ -778,9 +778,12 @@ dependencies = [
  "iroh-base",
  "iroh-blobs",
  "rand 0.9.0",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "uniffi",
+ "uuid",
 ]
 
 [[package]]
