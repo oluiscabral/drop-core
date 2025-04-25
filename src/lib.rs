@@ -85,10 +85,12 @@ struct FileDetails {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FileProjection {
     pub id: String,
+    // TODO: MAYBE WRAP ALL DATA RELATED PROPS TO A STRUCT
     pub total: u64,
     pub offset: u64,
-    pub file: FileDetails,
     pub data: Vec<u8>,
+    // ---
+    pub file: FileDetails,
 }
 
 #[derive(Debug)]
