@@ -1,14 +1,15 @@
 [Error]
 enum Error {
-    "InitializeEnvironmentError",
-    "ReadFileDataError",
-    "CreateCollectionError",
-    "CreateTicketError",
-    "ParseTicketError",
-    "InvalidTicketFormatError",
-    "InitializeDownloadError",
-    "FinishDownloadError",
-    "RetrieveCollectionError",
+    "CreateEndpointError",
+    "ReadOwnEndpointAddressError",
+    "CreateSendFilesRouterError",
+    "ParseReceiveFilesTicketError",
+    "CreateReceiveFilesConnectionError",
+    "CreateBidirectionalCommunicationError",
+    "ActivateBidirectionalCommunicationError",
+    "FinishCommunicationInputError",
+    "ReadCommunicationOutputError",
+    "DeserializeFileProjectionError",
 };
 
 dictionary SendFilesRequest {

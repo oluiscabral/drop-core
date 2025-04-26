@@ -24,24 +24,26 @@ mod entities;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Could not initialize the data exchange environment.")]
-    InitializeEnvironmentError,
-    #[error("Could not read file `{0}` data.")]
-    ReadFileDataError(String),
-    #[error("Could not create a collection in the data exchange environment.")]
-    CreateCollectionError,
-    #[error("Could not create the P2P authentication ticket.")]
-    CreateTicketError,
-    #[error("Could not parse the P2P authentication ticket.")]
-    ParseTicketError,
-    #[error("P2P authentication ticket format is invalid.")]
-    InvalidTicketFormatError,
-    #[error("Could not initialize downloading data from the data exchange environment.")]
-    InitializeDownloadError,
-    #[error("Could not finish downloading data from the data exchange environment.")]
-    FinishDownloadError,
-    #[error("Could not retrieve file collection from the data exchange environment.")]
-    RetrieveCollectionError,
+    #[error("Could not create endpoint: \"{0}\".")]
+    CreateEndpointError(String),
+    #[error("Could not read own endpoint address: \"{0}\".")]
+    ReadOwnEndpointAddressError(String),
+    #[error("Could not create a router for send files: \"{0}\".")]
+    CreateSendFilesRouterError(String),
+    #[error("Could not parse the ticket to receive files.")]
+    ParseReceiveFilesTicketError,
+    #[error("Could not create a connection to receive files: \"{0}\".")]
+    CreateReceiveFilesConnectionError(String),
+    #[error("Could not create a bidirectional communication with peer: \"{0}\".")]
+    CreateBidirectionalCommunicationError(String),
+    #[error("Could not activate the bidirectional communication with peer: \"{0}\".")]
+    ActivateBidirectionalCommunicationError(String),
+    #[error("Could not finish communication input to peer: \"{0}\".")]
+    FinishCommunicationInputError(String),
+    #[error("Could not read communication output from peer: \"{0}\".")]
+    ReadCommunicationOutputError(String),
+    #[error("Could not deserialize file projection: \"{0}\".")]
+    DeserializeFileProjectionError(String),
 }
 
 #[derive(Debug, Clone)]
@@ -172,7 +174,6 @@ impl ProtocolHandler for SendFilesHandler {
         let subscribers = self.subscribers.clone();
         return Box::pin(async move {
             println!("EXECUTING THE CONNECTION ACCEPTED HANDLER");
-            // TODO: ERROR HANDLING
             let mut bi = connection.accept_bi().await?;
             println!("ACCEPTED BI!");
             subscribers.iter().for_each(|subscriber| {
@@ -180,8 +181,6 @@ impl ProtocolHandler for SendFilesHandler {
                                 // TODO
                             });
             });
-            bi.1.read(&mut vec![]).await?;
-            println!("READ 'HANDSHAKE'");
             // TODO: RECEIVES THEIR PROFILE AND NOTIFY SUBSCRIBERS
             // TODO: SENDS MY PROFILE
             for f in &request.files {
@@ -215,7 +214,6 @@ impl ProtocolHandler for SendFilesHandler {
                                     });
                     });
 
-                    // TODO: ERROR HANDLING
                     bi.0.write_chunk(serialized_projection_bytes).await?;
 
                     subscribers.iter().for_each(|subscriber| {
@@ -375,16 +373,11 @@ impl Drop {
             .discovery_n0()
             .bind()
             .await
-            .map_err(|e| {
-                eprintln!("{}", e.to_string());
-                // TODO: REVIEW ERROR NAME
-                return Error::InitializeEnvironmentError;
-            })?;
-        let node_addr = endpoint.node_addr().await.map_err(|e| {
-            eprintln!("{}", e.to_string());
-            // TODO: REVIEW ERROR NAME
-            return Error::InitializeEnvironmentError;
-        })?;
+            .map_err(|e| Error::CreateEndpointError(e.to_string()))?;
+        let node_addr = endpoint
+            .node_addr()
+            .await
+            .map_err(|e| Error::ReadOwnEndpointAddressError(e.to_string()))?;
 
         let handler = Arc::new(SendFilesHandler::new(
             Instant::now() + Duration::from_secs(60 * 15),
@@ -396,10 +389,7 @@ impl Drop {
                 .accept([confirmation], handler.clone())
                 .spawn()
                 .await
-                .map_err(|e| {
-                    eprintln!("{}", e.to_string());
-                    return Error::InitializeEnvironmentError;
-                })?,
+                .map_err(|e| return Error::CreateSendFilesRouterError(e.to_string()))?,
         );
         self.send_files_configurations
             .lock()
@@ -420,65 +410,48 @@ impl Drop {
            TODO:
                - Should not allow receiving files from itself
         */
-        let ticket: NodeTicket = request.ticket.parse().map_err(|_| {
-            return Error::ParseTicketError;
-        })?;
+        let ticket: NodeTicket = request
+            .ticket
+            .parse()
+            .map_err(|_| Error::ParseReceiveFilesTicketError)?;
 
         let endpoint = Endpoint::builder()
             .discovery_n0()
             .bind()
             .await
-            .map_err(|e| {
-                eprintln!("endpoint error {}", e.to_string());
-                // TODO: REVIEW ERROR NAME
-                return Error::InitializeEnvironmentError;
-            })?;
+            .map_err(|e| Error::CreateEndpointError(e.to_string()))?;
 
         let connection = endpoint
             .connect(ticket, &[request.confirmation])
             .await
-            .map_err(|e| {
-                eprintln!("connection error {}", e.to_string());
-                // TODO: UPDATE ERROR NAME
-                return Error::InitializeDownloadError;
-            })?;
+            .map_err(|e| Error::CreateReceiveFilesConnectionError(e.to_string()))?;
 
-        let mut bi = connection.open_bi().await.map_err(|e| {
-            eprintln!("bi error {}", e.to_string());
-            // TODO: UPDATE ERROR NAME
-            return Error::InitializeDownloadError;
-        })?;
+        let mut bi = connection
+            .open_bi()
+            .await
+            .map_err(|e| Error::CreateBidirectionalCommunicationError(e.to_string()))?;
 
-        bi.0.write_all(&[0]).await.map_err(|e| {
-            eprintln!("initial bi write error {}", e.to_string());
-            // TODO: UPDATE ERROR NAME
-            return Error::InitializeDownloadError;
-        })?;
-        bi.0.finish().map_err(|e| {
-            eprintln!("finish bi write error {}", e.to_string());
-            // TODO: UPDATE ERROR NAME
-            return Error::InitializeDownloadError;
-        })?;
+        bi.0.write_all(&[0])
+            .await
+            .map_err(|e| Error::ActivateBidirectionalCommunicationError(e.to_string()))?;
+        bi.0.finish()
+            .map_err(|e| Error::FinishCommunicationInputError(e.to_string()))?;
 
         // TODO: SEND MY PROFILE
         // TODO: RECEIVES THEIR PROFILE (AND POSSIBLY CHUNK SIZE??)
         let chunk_len = 1024; // TODO: flexibilize chunk size
         let mut files: Vec<FileOutput> = Vec::new();
         loop {
-            let maybe_chunk = bi.1.read_chunk(chunk_len, true).await.map_err(|e| {
-                eprintln!("read chunk error {}", e.to_string());
-                // TODO: UPDATE ERROR NAME
-                return Error::InitializeDownloadError;
-            })?;
+            let maybe_chunk =
+                bi.1.read_chunk(chunk_len, true)
+                    .await
+                    .map_err(|e| Error::ReadCommunicationOutputError(e.to_string()))?;
             if maybe_chunk.is_none() {
                 break;
             }
             let chunk = maybe_chunk.unwrap();
-            let projection: FileProjection = serde_json::from_slice(&chunk.bytes).map_err(|e| {
-                eprintln!("deserializing projection error {}", e.to_string());
-                // TODO: UPDATE ERROR NAME
-                return Error::InitializeDownloadError;
-            })?;
+            let projection: FileProjection = serde_json::from_slice(&chunk.bytes)
+                .map_err(|e| Error::DeserializeFileProjectionError(e.to_string()))?;
             self.receive_files_subscribers
                 .read()
                 .await
