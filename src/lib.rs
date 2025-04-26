@@ -257,11 +257,21 @@ pub enum SendFilesEvent {
 impl std::fmt::Display for SendFilesEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SendFilesEvent::Connecting {} => f.write_str("connecting"),
-            SendFilesEvent::Connected {} => f.write_str("connected"),
-            SendFilesEvent::Sending {} => f.write_str("sending"),
-            SendFilesEvent::Sent {} => f.write_str("sent"),
-            SendFilesEvent::Closed {} => f.write_str("closed"),
+            SendFilesEvent::Connecting {
+                // TODO
+            } => f.write_str("connecting"),
+            SendFilesEvent::Connected {
+                // TODO
+            } => f.write_str("connected"),
+            SendFilesEvent::Sending {
+                // TODO
+            } => f.write_str("sending"),
+            SendFilesEvent::Sent {
+                // TODO
+            } => f.write_str("sent"),
+            SendFilesEvent::Closed {
+                // TODO
+            } => f.write_str("closed"),
         }
     }
 }
@@ -275,7 +285,9 @@ pub enum ReceiveFilesEvent {
 impl std::fmt::Display for ReceiveFilesEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReceiveFilesEvent::RECEIVING {} => f.write_str("receiving"),
+            ReceiveFilesEvent::RECEIVING {
+                // TODO
+            } => f.write_str("receiving"),
         }
     }
 }
