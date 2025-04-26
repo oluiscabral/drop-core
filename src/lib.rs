@@ -3,7 +3,7 @@
 use std::{
     future::Future,
     pin::Pin,
-    sync::{Arc, RwLock},
+    sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
 
@@ -14,8 +14,10 @@ use iroh::{
 
 use anyhow::Result;
 use iroh_base::ticket::NodeTicket;
+use n0_future::task::AbortOnDropHandle;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 mod entities;
@@ -95,8 +97,29 @@ struct FileProjection {
 
 #[derive(Debug)]
 struct SendFilesHandler {
+    expires_at: Instant,
     request: SendFilesRequest,
+    // TODO: POSSIBLY USE `Mutex<Option<bool>>` instead?
+    has_been_consumed: AtomicBool,
+    // TODO: POSSIBLY USE `Mutex<Option<bool>>` instead?
+    has_finished: Arc<AtomicBool>,
     subscribers: Vec<Arc<dyn SendFilesSubscriber>>,
+}
+
+impl SendFilesHandler {
+    pub fn new(
+        expires_at: Instant,
+        request: SendFilesRequest,
+        subscribers: Vec<Arc<dyn SendFilesSubscriber>>,
+    ) -> Self {
+        return Self {
+            expires_at,
+            request,
+            has_been_consumed: AtomicBool::new(false),
+            has_finished: Arc::new(AtomicBool::new(false)),
+            subscribers,
+        };
+    }
 }
 
 impl ProtocolHandler for SendFilesHandler {
@@ -109,10 +132,26 @@ impl ProtocolHandler for SendFilesHandler {
                 // TODO
             });
         });
-        return Box::pin(async {
-            let conn = connecting.await?;
-            Ok(conn)
-        });
+        if Instant::now() > self.expires_at {
+            return Box::pin(async {
+                return Err(anyhow::anyhow!("Connection handler has expired."));
+            });
+        }
+        let has_been_consumed = self
+            .has_been_consumed
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::Acquire,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .unwrap_or(true);
+        if has_been_consumed {
+            return Box::pin(async {
+                return Err(anyhow::anyhow!("Connection has already been consumed."));
+            });
+        }
+        return Box::pin(async { Ok(connecting.await?) });
     }
 
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> {
@@ -128,6 +167,7 @@ impl ProtocolHandler for SendFilesHandler {
         &self,
         connection: iroh::endpoint::Connection,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>> {
+        let has_finished = self.has_finished.clone();
         let request = self.request.clone();
         let subscribers = self.subscribers.clone();
         return Box::pin(async move {
@@ -135,6 +175,11 @@ impl ProtocolHandler for SendFilesHandler {
             // TODO: ERROR HANDLING
             let mut bi = connection.accept_bi().await?;
             println!("ACCEPTED BI!");
+            subscribers.iter().for_each(|subscriber| {
+                subscriber.notify(SendFilesEvent::Connected {
+                                // TODO
+                            });
+            });
             bi.1.read(&mut vec![]).await?;
             println!("READ 'HANDSHAKE'");
             // TODO: RECEIVES THEIR PROFILE AND NOTIFY SUBSCRIBERS
@@ -166,8 +211,8 @@ impl ProtocolHandler for SendFilesHandler {
 
                     subscribers.iter().for_each(|subscriber| {
                         subscriber.notify(SendFilesEvent::Sending {
-                                // TODO
-                            });
+                                        // TODO
+                                    });
                     });
 
                     // TODO: ERROR HANDLING
@@ -175,8 +220,8 @@ impl ProtocolHandler for SendFilesHandler {
 
                     subscribers.iter().for_each(|subscriber| {
                         subscriber.notify(SendFilesEvent::Sent {
-                            // TODO
-                        });
+                                    // TODO
+                                });
                     });
 
                     offset = end;
@@ -184,15 +229,11 @@ impl ProtocolHandler for SendFilesHandler {
             }
             bi.0.finish()?;
             bi.0.stopped().await?;
-            // TODO: CLOSE THE CONNECTION
+            connection.close(iroh::endpoint::VarInt::from_u32(0), &[0]);
+            has_finished.store(true, std::sync::atomic::Ordering::Relaxed);
             return Ok(());
         });
     }
-}
-
-struct SendFilesConfiguration {
-    pub router: Router,
-    pub expires_at: Instant,
 }
 
 pub enum SendFilesEvent {
@@ -247,46 +288,66 @@ pub trait ReceiveFilesSubscriber: Send + Sync + std::fmt::Debug {
     fn notify(&self, event: ReceiveFilesEvent) -> ();
 }
 
-struct SendFilesResources {
-    subscribers: Vec<Arc<dyn SendFilesSubscriber>>,
-    configurations: Vec<SendFilesConfiguration>,
-}
-
-struct ReceiveFilesResources {
-    subscribers: Vec<Arc<dyn ReceiveFilesSubscriber>>,
+struct SendFilesConfiguration {
+    router: Arc<Router>,
+    handler: Arc<SendFilesHandler>,
 }
 
 pub struct Drop {
-    send_files_resources: RwLock<SendFilesResources>,
-    receive_files_resources: RwLock<ReceiveFilesResources>,
+    _control_task: AbortOnDropHandle<()>,
+    send_files_subscribers: RwLock<Vec<Arc<dyn SendFilesSubscriber>>>,
+    receive_files_subscribers: RwLock<Vec<Arc<dyn ReceiveFilesSubscriber>>>,
+    send_files_configurations: Arc<Mutex<Vec<SendFilesConfiguration>>>,
 }
 
 impl Drop {
     pub fn new() -> Result<Self, Error> {
+        let send_files_subscribers = RwLock::new(Vec::new());
+        let receive_files_subscribers = RwLock::new(Vec::new());
+        let send_files_configurations = Arc::new(Mutex::new(Vec::<SendFilesConfiguration>::new()));
+
+        let c_send_files_configurations = send_files_configurations.clone();
+        let _control_task = AbortOnDropHandle::new(tokio::task::spawn(async move {
+            loop {
+                let mut send_files_configurations = c_send_files_configurations.lock().await;
+                loop {
+                    let now = Instant::now();
+                    let maybe_idx = send_files_configurations.iter().position(|c| {
+                        return c.router.is_shutdown()
+                            || c.handler
+                                .has_finished
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                            || now > c.handler.expires_at;
+                    });
+                    if maybe_idx.is_none() {
+                        break;
+                    }
+                    let config_idx = maybe_idx.unwrap();
+                    let config = send_files_configurations.remove(config_idx);
+                    let _ = config.router.shutdown().await;
+                }
+            }
+        }));
+
         return Ok(Self {
-            send_files_resources: RwLock::new(SendFilesResources {
-                subscribers: Vec::new(),
-                configurations: Vec::new(),
-            }),
-            receive_files_resources: RwLock::new(ReceiveFilesResources {
-                subscribers: Vec::new(),
-            }),
+            _control_task,
+            send_files_subscribers,
+            receive_files_subscribers,
+            send_files_configurations,
         });
     }
 
-    pub fn subscribe_to_send_files(&self, subscriber: Arc<dyn SendFilesSubscriber>) -> () {
-        self.send_files_resources
-            .write()
-            .unwrap()
-            .subscribers
-            .push(subscriber);
+    pub async fn subscribe_to_send_files(&self, subscriber: Arc<dyn SendFilesSubscriber>) -> () {
+        self.send_files_subscribers.write().await.push(subscriber);
     }
 
-    pub fn subscribe_to_receive_files(&self, subscriber: Arc<dyn ReceiveFilesSubscriber>) -> () {
-        self.receive_files_resources
+    pub async fn subscribe_to_receive_files(
+        &self,
+        subscriber: Arc<dyn ReceiveFilesSubscriber>,
+    ) -> () {
+        self.receive_files_subscribers
             .write()
-            .unwrap()
-            .subscribers
+            .await
             .push(subscriber);
     }
 
@@ -313,32 +374,25 @@ impl Drop {
             return Error::InitializeEnvironmentError;
         })?;
 
-        let handler = SendFilesHandler {
-            request: request.clone(),
-            subscribers: self
-                .send_files_resources
-                .read()
-                .unwrap()
-                .subscribers
-                .clone(),
-        };
-        let router = Router::builder(endpoint)
-            .accept([confirmation], handler)
-            .spawn()
+        let handler = Arc::new(SendFilesHandler::new(
+            Instant::now() + Duration::from_secs(60 * 15),
+            request.clone(),
+            self.send_files_subscribers.read().await.clone(),
+        ));
+        let router = Arc::new(
+            Router::builder(endpoint)
+                .accept([confirmation], handler.clone())
+                .spawn()
+                .await
+                .map_err(|e| {
+                    eprintln!("{}", e.to_string());
+                    return Error::InitializeEnvironmentError;
+                })?,
+        );
+        self.send_files_configurations
+            .lock()
             .await
-            .map_err(|e| {
-                eprintln!("{}", e.to_string());
-                return Error::InitializeEnvironmentError;
-            })?;
-        let config = SendFilesConfiguration {
-            router,
-            expires_at: Instant::now() + Duration::from_secs(60 * 15),
-        };
-        self.send_files_resources
-            .write()
-            .unwrap()
-            .configurations
-            .push(config);
+            .push(SendFilesConfiguration { router, handler });
 
         return Ok(SendFilesResponse {
             ticket: NodeTicket::new(node_addr).to_string(),
@@ -413,10 +467,9 @@ impl Drop {
                 // TODO: UPDATE ERROR NAME
                 return Error::InitializeDownloadError;
             })?;
-            self.receive_files_resources
+            self.receive_files_subscribers
                 .read()
-                .unwrap()
-                .subscribers
+                .await
                 .iter()
                 .for_each(|s| {
                     s.notify(ReceiveFilesEvent::RECEIVING {
@@ -437,6 +490,7 @@ impl Drop {
                 files.push(file);
             }
         }
+        endpoint.close().await;
 
         return Ok(ReceiveFilesResponse { files });
     }

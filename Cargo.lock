@@ -777,6 +777,7 @@ dependencies = [
  "iroh",
  "iroh-base",
  "iroh-blobs",
+ "n0-future",
  "rand 0.9.0",
  "serde",
  "serde_json",
