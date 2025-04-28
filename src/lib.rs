@@ -100,7 +100,7 @@ struct FileProjection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SendFilesHandshake {
     sender: Profile,
-    files: Vec<FileMetadata>,
+    file_metadatas: Vec<FileMetadata>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -189,7 +189,7 @@ impl ProtocolHandler for SendFilesHandler {
         return Box::pin(async move {
             let mut bi = connection.accept_bi().await?;
             // TODO: SEND MY PROFILE
-            let identified_files_iter = request
+            let identified_file_metadatas_iter = request
                 .files
                 .iter()
                 .map(|f| return (Uuid::new_v4().to_string(), f));
@@ -197,7 +197,7 @@ impl ProtocolHandler for SendFilesHandler {
                 sender: Profile {
                     name: String::from("TODO: PROFILE SYSTEM"),
                 },
-                files: identified_files_iter
+                file_metadatas: identified_file_metadatas_iter
                     .clone()
                     .map(|idf| {
                         return FileMetadata {
@@ -217,7 +217,7 @@ impl ProtocolHandler for SendFilesHandler {
             // SEND HANDSHAKE
             bi.0.write_all(&my_handshake_serialized).await?;
 
-            for (id, f) in identified_files_iter {
+            for (id, f) in identified_file_metadatas_iter {
                 let chunk_len = 1024; // TODO: FLEXIBILIZE CHUNK LEN
 
                 for chunk in f.data.chunks(chunk_len) {
@@ -520,9 +520,16 @@ impl Drop {
                 let file = maybe_file.unwrap();
                 file.data.append(&mut projection.data.clone());
             } else {
+                // TODO: HANDLE FILE METADATA NOT FOUND
+                // TODO: HANDLE (MAYBE NOT HERE) FILE DATA LEN GREATER THAN EXPECTED ON METADATA
+                let file_metadata = their_handshake
+                    .file_metadatas
+                    .iter()
+                    .find(|f| f.id == projection.id)
+                    .unwrap();
                 let file = FileOutput {
-                    id: projection.id.clone(),
-                    name: String::from("TODO: GET FILE NAME"),
+                    id: file_metadata.id.clone(),
+                    name: file_metadata.name.clone(),
                     data: projection.data.clone(),
                 };
                 files.push(file);
