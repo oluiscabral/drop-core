@@ -8,8 +8,11 @@ enum Error {
     "CreateBidirectionalCommunicationError",
     "ActivateBidirectionalCommunicationError",
     "FinishCommunicationInputError",
+    "FinishCommunicationOutputError",
     "ReadCommunicationOutputError",
     "DeserializeFileProjectionError",
+    "InvalidHandshakeError",
+    "ParseHandshakeError",
 };
 
 dictionary SendFilesRequest {

@@ -1,6 +1,7 @@
 // TODO: REVIEW WHICH STRUCT/TRAIT/WHATEVER SHOULD BE PUBLIC OR PRIVATE
 
 use std::{
+    collections::HashMap,
     future::Future,
     pin::Pin,
     sync::{atomic::AtomicBool, Arc},
@@ -40,10 +41,16 @@ pub enum Error {
     ActivateBidirectionalCommunicationError(String),
     #[error("Could not finish communication input to peer: \"{0}\".")]
     FinishCommunicationInputError(String),
+    #[error("Could not finish communication output from peer: \"{0}\".")]
+    FinishCommunicationOutputError(String),
     #[error("Could not read communication output from peer: \"{0}\".")]
     ReadCommunicationOutputError(String),
     #[error("Could not deserialize file projection: \"{0}\".")]
     DeserializeFileProjectionError(String),
+    #[error("Could not establish a handshake with peer: \"{0}\".")]
+    InvalidHandshakeError(String),
+    #[error("Could not parse handshake with peer: \"{0}\".")]
+    ParseHandshakeError(String),
 }
 
 #[derive(Debug, Clone)]
@@ -189,21 +196,23 @@ impl ProtocolHandler for SendFilesHandler {
         return Box::pin(async move {
             let mut bi = connection.accept_bi().await?;
             // TODO: SEND MY PROFILE
-            let identified_file_metadatas_iter = request
-                .files
-                .iter()
-                .map(|f| return (Uuid::new_v4().to_string(), f));
+            let identified_files: HashMap<String, &FilePayload> = HashMap::from_iter(
+                request
+                    .files
+                    .iter()
+                    .map(|f| return (Uuid::new_v4().to_string(), f)),
+            );
             let my_handshake = SendFilesHandshake {
                 sender: Profile {
                     name: String::from("TODO: PROFILE SYSTEM"),
                 },
-                file_metadatas: identified_file_metadatas_iter
-                    .clone()
-                    .map(|idf| {
+                file_metadatas: identified_files
+                    .iter()
+                    .map(|(id, f)| {
                         return FileMetadata {
-                            id: idf.0.clone(),
-                            len: idf.1.data.len() as u64,
-                            name: idf.1.name.clone(),
+                            id: id.clone(),
+                            len: f.data.len() as u64,
+                            name: f.name.clone(),
                         };
                     })
                     .collect(),
@@ -217,7 +226,7 @@ impl ProtocolHandler for SendFilesHandler {
             // SEND HANDSHAKE
             bi.0.write_all(&my_handshake_serialized).await?;
 
-            for (id, f) in identified_file_metadatas_iter {
+            for (id, f) in identified_files {
                 let chunk_len = 1024; // TODO: FLEXIBILIZE CHUNK LEN
 
                 for chunk in f.data.chunks(chunk_len) {
@@ -455,13 +464,11 @@ impl Drop {
                 .map_err(|e| Error::ReadCommunicationOutputError(e.to_string()))?;
 
         if maybe_their_handshake_len_raw.is_none() {
-            // TODO: CREATE ERROR CODE?
-            // TODO: UPDATE map_err WITH PROPER ERROR NAME
             bi.1.stop(iroh::endpoint::VarInt::from_u32(0))
-                .map_err(|e| Error::ReadCommunicationOutputError(e.to_string()))?;
+                .map_err(|e| Error::FinishCommunicationOutputError(e.to_string()))?;
             endpoint.close().await;
-            return Err(Error::ReadCommunicationOutputError(String::from(
-                "TODO: UPDATE ERROR NAME",
+            return Err(Error::InvalidHandshakeError(String::from(
+                "Handshake bytes length not found",
             )));
         }
 
@@ -476,20 +483,18 @@ impl Drop {
                 .map_err(|e| Error::ReadCommunicationOutputError(e.to_string()))?;
 
         if maybe_their_handshake_raw.is_none() {
-            // TODO: CREATE ERROR CODE?
-            // TODO: UPDATE map_err WITH PROPER ERROR NAME
             bi.1.stop(iroh::endpoint::VarInt::from_u32(0))
-                .map_err(|e| Error::ReadCommunicationOutputError(e.to_string()))?;
+                .map_err(|e| Error::FinishCommunicationOutputError(e.to_string()))?;
             endpoint.close().await;
-            return Err(Error::ReadCommunicationOutputError(String::from(
-                "TODO: UPDATE ERROR NAME",
+            return Err(Error::InvalidHandshakeError(String::from(
+                "Handshake not found",
             )));
         }
 
         let their_handshake_raw = maybe_their_handshake_raw.unwrap();
-        // TODO: HANDLE ERRORS
         let their_handshake: SendFilesHandshake =
-            serde_json::from_slice(&their_handshake_raw.bytes).unwrap();
+            serde_json::from_slice(&their_handshake_raw.bytes)
+                .map_err(|e| Error::ParseHandshakeError(e.to_string()))?;
 
         let mut files: Vec<FileOutput> = Vec::new();
         loop {
