@@ -195,7 +195,6 @@ impl ProtocolHandler for SendFilesHandler {
         // let subscribers = self.subscribers.clone();
         return Box::pin(async move {
             let mut bi = connection.accept_bi().await?;
-            // TODO: SEND MY PROFILE
             let identified_files: HashMap<String, &FilePayload> = HashMap::from_iter(
                 request
                     .files
@@ -254,68 +253,26 @@ impl ProtocolHandler for SendFilesHandler {
     }
 }
 
-pub enum SendFilesEvent {
-    Connecting {
-        // TODO
-    },
-    Connected {
-        // TODO
-    },
-    Sending {
-        // TODO
-    },
-    Sent {
-        // TODO
-    },
-    Closed {
-        // TODO
-    },
+pub struct SendingEvent {
+    // TODO
 }
 
-impl std::fmt::Display for SendFilesEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SendFilesEvent::Connecting {
-                // TODO
-            } => f.write_str("connecting"),
-            SendFilesEvent::Connected {
-                // TODO
-            } => f.write_str("connected"),
-            SendFilesEvent::Sending {
-                // TODO
-            } => f.write_str("sending"),
-            SendFilesEvent::Sent {
-                // TODO
-            } => f.write_str("sent"),
-            SendFilesEvent::Closed {
-                // TODO
-            } => f.write_str("closed"),
-        }
-    }
+pub struct ReceivingEvent {
+    // TODO
 }
 
-pub enum ReceiveFilesEvent {
-    RECEIVING {
-        // TODO
-    },
-}
-
-impl std::fmt::Display for ReceiveFilesEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReceiveFilesEvent::RECEIVING {
-                // TODO
-            } => f.write_str("receiving"),
-        }
-    }
+pub struct ConnectingEvent {
+    // TODO
 }
 
 pub trait SendFilesSubscriber: Send + Sync + std::fmt::Debug {
-    fn notify(&self, event: SendFilesEvent) -> ();
+    fn notify_sending(&self, event: SendingEvent);
+    fn notify_connecting(&self, event: ConnectingEvent);
 }
 
 pub trait ReceiveFilesSubscriber: Send + Sync + std::fmt::Debug {
-    fn notify(&self, event: ReceiveFilesEvent) -> ();
+    fn notify_receiving(&self, event: ReceivingEvent);
+    fn notify_connecting(&self, event: ConnectingEvent);
 }
 
 struct SendFilesConfiguration {
@@ -387,8 +344,6 @@ impl Drop {
                - Limit how many send files configs is possible to exist at the same time
                - Maybe let the API client decide the expiration time
         */
-        let confirmation: u8 = rand::rng().random_range(0..=99);
-
         let endpoint = Endpoint::builder()
             .discovery_n0()
             .bind()
@@ -399,6 +354,7 @@ impl Drop {
             .await
             .map_err(|e| Error::ReadOwnEndpointAddressError(e.to_string()))?;
 
+        let confirmation: u8 = rand::rng().random_range(0..=99);
         let handler = Arc::new(SendFilesHandler::new(
             Instant::now() + Duration::from_secs(60 * 15),
             request.clone(),
