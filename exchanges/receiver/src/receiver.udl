@@ -1,0 +1,38 @@
+[Error]
+enum ReceiverError {
+    "TODO",
+};
+
+// REQUEST ->
+dictionary ReceiveFilesRequest {
+    string ticket;
+    u8 confirmation;
+    ReceiverProfile profile;
+};
+
+dictionary ReceiverProfile {
+    string name;
+};
+// <- REQUEST
+
+// RESPONSE ->
+dictionary ReceiveFilesResponse {
+    sequence<ReceiverFile> files;
+};
+
+dictionary ReceiverFile {
+    string id;
+    string name;
+    ReceiverFileData data;
+};
+
+interface ReceiverFileData {
+    u64 len();
+    u8? read();
+};
+// <- RESPONSE
+
+namespace receiver {
+    [Throws=ReceiverError, Async]
+    ReceiveFilesResponse receive_files(ReceiveFilesRequest request);
+};

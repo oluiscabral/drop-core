@@ -1,0 +1,41 @@
+[Error]
+enum SenderError {
+    "TODO",
+};
+
+// REQUEST ->
+dictionary SendFilesRequest {
+    SenderProfile profile;
+    sequence<SenderFile> files;
+};
+
+dictionary SenderProfile {
+    string name;
+};
+
+dictionary SenderFile {
+    string name;
+    SenderFileData data;
+};
+
+[Trait, WithForeign]
+interface SenderFileData {
+    u64 len();
+    u8? read();
+};
+// <- REQUEST
+
+// RESPONSE ->
+interface SendFilesBubble {
+    string get_ticket();
+    u8 get_confirmation();
+    void finish();
+    boolean get_is_finished();
+    string get_created_at();
+};
+// <- RESPONSE
+
+namespace sender {
+    [Throws=SenderError, Async]
+    SendFilesBubble send_files(SendFilesRequest request);
+};
