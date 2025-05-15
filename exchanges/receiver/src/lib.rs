@@ -158,22 +158,18 @@ async fn send_handshake(stream: &mut SendStream, resources: &ReceiveFilesResourc
 }
 
 async fn get_their_handshake(their_stream: &mut RecvStream) -> Result<Option<SenderHandshake>> {
-    let their_handshake_len_raw = their_stream.read_chunk(4, true).await?;
-    if their_handshake_len_raw.is_none() {
+    let mut their_handshake_len_raw = [0u8; 4];
+    let read_result = their_stream.read_exact(&mut their_handshake_len_raw).await;
+    if read_result.is_err() {
         return Ok(None);
     }
-    let their_handshake_len_raw = their_handshake_len_raw.unwrap();
-    let their_handshake_len_bytes: [u8; 4] =
-        their_handshake_len_raw.bytes[0..4].try_into().unwrap();
-    let their_handshake_len: u32 = u32::from_be_bytes(their_handshake_len_bytes);
-    let their_handshake_raw = their_stream
-        .read_chunk(their_handshake_len as usize, true)
-        .await?;
-    if their_handshake_raw.is_none() {
+    let their_handshake_len: u32 = u32::from_be_bytes(their_handshake_len_raw);
+    let mut their_handshake_raw = vec![0u8; their_handshake_len as usize];
+    let read_result = their_stream.read_exact(&mut their_handshake_raw).await;
+    if read_result.is_err() {
         return Ok(None);
     }
-    let their_handshake_raw = their_handshake_raw.unwrap();
-    let their_handshake: SenderHandshake = serde_json::from_slice(&their_handshake_raw.bytes)?;
+    let their_handshake: SenderHandshake = serde_json::from_slice(their_handshake_raw.as_slice())?;
     return Ok(Some(their_handshake));
 }
 

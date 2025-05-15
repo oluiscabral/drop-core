@@ -32,6 +32,30 @@ interface SendFilesBubble {
     void finish();
     boolean get_is_finished();
     string get_created_at();
+    void subscribe(SendFilesSubscriber subscriber);
+    void unsubscribe(SendFilesSubscriber subscriber);
+};
+
+[Trait, WithForeign]
+interface SendFilesSubscriber {
+    string get_id();
+    void notify_sending(SendFilesSendingEvent event);
+    void notify_connecting(SendFilesConnectingEvent event);
+};
+
+dictionary SendFilesSendingEvent  {
+    string name;
+    u64 sent;
+    u64 remaining;
+};
+
+dictionary SendFilesConnectingEvent   {
+    SendFilesProfile receiver;
+};
+
+dictionary SendFilesProfile {
+    string id;
+    string name;
 };
 // <- RESPONSE
 

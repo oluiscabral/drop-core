@@ -100,7 +100,21 @@ impl SendFilesBubble {
     pub fn get_created_at(&self) -> String {
         return self.created_at.to_rfc3339();
     }
+
+    pub fn subscribe(&self, subscriber: Arc<dyn SendFilesSubscriber>) {
+        return self.handler.subscribe(subscriber);
+    }
+
+    pub fn unsubscribe(&self, subscriber: Arc<dyn SendFilesSubscriber>) {
+        return self.handler.unsubscribe(subscriber);
+    }
 }
+
+// exposing them to UniFFI parser
+pub use handler::send_files::SendFilesConnectingEvent;
+pub use handler::send_files::SendFilesProfile;
+pub use handler::send_files::SendFilesSendingEvent;
+pub use handler::send_files::SendFilesSubscriber;
 // <- RESPONSE
 
 pub async fn send_files(request: SendFilesRequest) -> Result<Arc<SendFilesBubble>, SenderError> {
