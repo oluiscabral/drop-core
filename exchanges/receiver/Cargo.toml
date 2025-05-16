@@ -13,6 +13,7 @@ common = { path = "../common" }
 
 uuid = "1.16.0"
 iroh = "0.34.1"
+tokio = "1.44.2"
 serde = "1.0.219"
 anyhow = "1.0.98"
 thiserror = "1.0"

@@ -16,8 +16,14 @@ dictionary ReceiverProfile {
 // <- REQUEST
 
 // RESPONSE ->
-dictionary ReceiveFilesResponse {
-    sequence<ReceiverFile> files;
+interface ReceiveFilesBubble {
+    void start();
+    void cancel();
+    boolean is_finished();
+    boolean is_cancelled();
+    sequence<ReceiverFile> get_files();
+    void subscribe(ReceiveFilesSubscriber subscriber);
+    void unsubscribe(ReceiveFilesSubscriber subscriber);
 };
 
 dictionary ReceiverFile {
@@ -30,9 +36,30 @@ interface ReceiverFileData {
     u64 len();
     u8? read();
 };
+
+[Trait, WithForeign]
+interface ReceiveFilesSubscriber {
+    string get_id();
+    void notify_receiving(ReceiveFilesReceivingEvent event);
+    void notify_connecting(ReceiveFilesConnectingEvent event);
+};
+
+dictionary ReceiveFilesReceivingEvent {
+    string id;
+    u64 received;
+};
+
+dictionary ReceiveFilesConnectingEvent {
+    ReceiveFilesProfile sender;
+};
+
+dictionary ReceiveFilesProfile {
+    string id;
+    string name;
+};
 // <- RESPONSE
 
 namespace receiver {
     [Throws=ReceiverError, Async]
-    ReceiveFilesResponse receive_files(ReceiveFilesRequest request);
+    ReceiveFilesBubble receive_files(ReceiveFilesRequest request);
 };
