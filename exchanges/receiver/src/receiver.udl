@@ -21,6 +21,7 @@ interface ReceiveFilesBubble {
     void cancel();
     boolean is_finished();
     boolean is_cancelled();
+    [Throws=ReceiverError, Async]
     sequence<ReceiverFile> get_files();
     void subscribe(ReceiveFilesSubscriber subscriber);
     void unsubscribe(ReceiveFilesSubscriber subscriber);

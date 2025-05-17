@@ -1,4 +1,4 @@
 [workspace]
-members = [ "exchanges/sender", "exchanges/receiver" ]
+members = [ "exchanges/sender", "exchanges/receiver", "main" ]
 
 resolver = "2"

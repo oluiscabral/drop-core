@@ -29,8 +29,10 @@ interface SenderFileData {
 interface SendFilesBubble {
     string get_ticket();
     u8 get_confirmation();
-    void finish();
-    boolean get_is_finished();
+    [Async]
+    void cancel();
+    boolean is_finished();
+    boolean is_connected();
     string get_created_at();
     void subscribe(SendFilesSubscriber subscriber);
     void unsubscribe(SendFilesSubscriber subscriber);
