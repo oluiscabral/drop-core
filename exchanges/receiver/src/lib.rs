@@ -1,10 +1,6 @@
 mod receive_files;
 
-use std::{
-    io::Read,
-    os::unix::fs::FileExt,
-    sync::{Arc, atomic::AtomicU64},
-};
+use std::{io::Read, os::unix::fs::FileExt, sync::atomic::AtomicU64};
 
 pub use receive_files::*;
 
@@ -22,7 +18,7 @@ pub struct ReceiverProfile {
 pub struct ReceiverFile {
     pub id: String,
     pub name: String,
-    pub data: Arc<ReceiverFileData>,
+    pub data: ReceiverFileData,
 }
 
 #[derive(Debug)]
@@ -56,5 +52,3 @@ impl ReceiverFileData {
         return Some(buf[0]);
     }
 }
-
-uniffi::include_scaffolding!("receiver");

@@ -283,7 +283,7 @@ async fn receive_stream_files(carrier: &mut Carrier) -> Result<()> {
         .map(|vp| {
             let id = vp.file_name().unwrap().to_str().unwrap();
             let handshake_file = their_handshake.files.iter().find(|f| f.id == id).unwrap();
-            let data = Arc::new(ReceiverFileData::new(vp.to_path_buf()));
+            let data = ReceiverFileData::new(vp.to_path_buf());
             return ReceiverFile {
                 id: id.to_string(),
                 name: handshake_file.name.clone(),
@@ -343,7 +343,7 @@ pub struct ReceiveFilesProfile {
 
 pub async fn receive_files(
     request: ReceiveFilesRequest,
-) -> Result<Arc<ReceiveFilesBubble>, ReceiverError> {
+) -> Result<ReceiveFilesBubble, ReceiverError> {
     /*
        TODO:
            - User should not receive files from themself
@@ -361,12 +361,12 @@ pub async fn receive_files(
         .connect(ticket, &[request.confirmation])
         .await
         .map_err(|e| ReceiverError::TODO(e.to_string()))?;
-    return Ok(Arc::new(ReceiveFilesBubble::new(
+    return Ok(ReceiveFilesBubble::new(
         Profile {
             id: Uuid::new_v4().to_string(),
             name: request.profile.name,
         },
         endpoint,
         connection,
-    )));
+    ));
 }

@@ -130,7 +130,7 @@ async fn run_send_files(args: Vec<&str>) -> Result<()> {
     println!("ticket: \"{}\"", bubble.get_ticket());
     println!("confirmation: \"{}\"", bubble.get_confirmation());
     tokio::signal::ctrl_c().await?;
-    bubble.cancel().await;
+    let _ = bubble.cancel().await;
     return Ok(());
 }
 
@@ -159,7 +159,7 @@ async fn run_receive_files(args: Vec<&str>) -> Result<()> {
         println!("Couldn't parse receive command line arguments: {args:?}");
         println!("Usage:");
         println!("    # to receive:");
-        println!("    cargo run main -- receive [OUTPUT] [TICKET] [CONFIRMATION]");
+        println!("    cargo run receive [OUTPUT] [TICKET] [CONFIRMATION]");
         return Ok(());
     }
     let ticket = args[1].to_string();
@@ -205,9 +205,9 @@ fn on_invalid(args: Vec<String>) {
     println!("Couldn't parse command line arguments: {args:?}");
     println!("Usage:");
     println!("    # to send:");
-    println!("    cargo run main -- send [SOURCE...]");
+    println!("    cargo run send [SOURCE...]");
     println!("    # this will print a ticket and a confirmation code.");
     println!();
     println!("    # to receive:");
-    println!("    cargo run main -- receive [OUTPUT] [TICKET] [CONFIRMATION]");
+    println!("    cargo run receive [OUTPUT] [TICKET] [CONFIRMATION]");
 }

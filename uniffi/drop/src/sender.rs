@@ -1,6 +1,5 @@
 mod send_files;
 
-use entities::Data;
 use std::sync::Arc;
 
 pub use send_files::*;
@@ -21,7 +20,7 @@ pub trait SenderFileData: Send + Sync {
 struct SenderFileDataAdapter {
     inner: Arc<dyn SenderFileData>,
 }
-impl Data for SenderFileDataAdapter {
+impl sender::SenderFileData for SenderFileDataAdapter {
     fn len(&self) -> u64 {
         return self.inner.len();
     }

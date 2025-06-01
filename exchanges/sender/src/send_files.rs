@@ -2,27 +2,28 @@
 
 mod handler;
 
-use crate::{SenderError, SenderFile, SenderFileDataAdapter, SenderProfile};
+use crate::{SenderFile, SenderFileDataAdapter, SenderProfile};
+use anyhow::Result;
 use chrono::{DateTime, Utc};
 use entities::{File, Profile};
+use handler::SendFilesHandler;
 use iroh::{Endpoint, protocol::Router};
 use iroh_base::ticket::NodeTicket;
 use rand::Rng;
-use std::{fmt::Debug, sync::Arc};
+use std::sync::Arc;
 use uuid::Uuid;
 
-pub use handler::*;
+pub use handler::{SendFilesConnectingEvent, SendFilesSendingEvent, SendFilesSubscriber};
 
 pub struct SendFilesRequest {
     pub profile: SenderProfile,
     pub files: Vec<SenderFile>,
 }
 
-#[derive(Debug)]
 pub struct SendFilesBubble {
     ticket: String,
     confirmation: u8,
-    router: Arc<Router>,
+    router: Router,
     handler: Arc<SendFilesHandler>,
     created_at: DateTime<Utc>,
 }
@@ -30,7 +31,7 @@ impl SendFilesBubble {
     pub fn new(
         ticket: String,
         confirmation: u8,
-        router: Arc<Router>,
+        router: Router,
         handler: Arc<SendFilesHandler>,
     ) -> Self {
         return Self {
@@ -50,10 +51,8 @@ impl SendFilesBubble {
         return self.confirmation;
     }
 
-    pub async fn cancel(&self) -> () {
-        // TODO: HANDLE FAILED AWAIT
-        let _ = self.router.shutdown().await;
-        return ();
+    pub async fn cancel(&self) -> Result<()> {
+        return self.router.shutdown().await;
     }
 
     pub fn is_finished(&self) -> bool {
@@ -80,16 +79,9 @@ impl SendFilesBubble {
     }
 }
 
-pub async fn send_files(request: SendFilesRequest) -> Result<Arc<SendFilesBubble>, SenderError> {
-    let endpoint = Endpoint::builder()
-        .discovery_n0()
-        .bind()
-        .await
-        .map_err(|e| SenderError::TODO(e.to_string()))?;
-    let node_addr = endpoint
-        .node_addr()
-        .await
-        .map_err(|e| SenderError::TODO(e.to_string()))?;
+pub async fn send_files(request: SendFilesRequest) -> Result<SendFilesBubble> {
+    let endpoint = Endpoint::builder().discovery_n0().bind().await?;
+    let node_addr = endpoint.node_addr().await?;
     let confirmation: u8 = rand::rng().random_range(0..=99);
     let handler = Arc::new(SendFilesHandler::new(
         Profile {
@@ -99,24 +91,24 @@ pub async fn send_files(request: SendFilesRequest) -> Result<Arc<SendFilesBubble
         request
             .files
             .into_iter()
-            .map(|f| File {
-                id: Uuid::new_v4().to_string(),
-                name: f.name,
-                data: Arc::new(SenderFileDataAdapter { data: f.data }),
+            .map(|f| {
+                let data = SenderFileDataAdapter { inner: f.data };
+                return File {
+                    id: Uuid::new_v4().to_string(),
+                    name: f.name,
+                    data: Arc::new(data),
+                };
             })
             .collect(),
     ));
-    let router = Arc::new(
-        Router::builder(endpoint)
-            .accept([confirmation], handler.clone())
-            .spawn()
-            .await
-            .map_err(|e| SenderError::TODO(e.to_string()))?,
-    );
-    return Ok(Arc::new(SendFilesBubble::new(
+    let router = Router::builder(endpoint)
+        .accept([confirmation], handler.clone())
+        .spawn()
+        .await?;
+    return Ok(SendFilesBubble::new(
         NodeTicket::new(node_addr).to_string(),
         confirmation,
         router,
         handler,
-    )));
+    ));
 }
