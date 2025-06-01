@@ -1,0 +1,191 @@
+name: Bindings Release
+
+on:
+  push:
+    tags:
+      - "bindings.v[0-9]+.[0-9]+.[0-9]+"
+
+defaults:
+  run:
+    working-directory: ./uniffi/drop
+
+jobs:
+  aarch64-linux-android:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install `cargo-ndk`
+        run: cargo install cargo-ndk
+
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build JNI Libraries
+        run: cargo ndk --output-dir ./target/release/jniLibs --target aarch64-linux-android build --release
+
+      - name: Create JNI Libraries ZIP
+        run: |
+          cd ./target/release
+          zip -r ../../aarch64-linux-android-jniLibs.zip ./jniLibs
+          cd -
+
+      - name: Release JNI Libraries ZIP
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./uniffi/drop/aarch64-linux-android-jniLibs.zip"
+
+  armv7-linux-androideabi:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi
+
+      - name: Install `cargo-ndk`
+        run: cargo install cargo-ndk
+
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build JNI Libraries
+        run: cargo ndk --output-dir ./target/release/jniLibs --target armv7-linux-androideabi build --release
+
+      - name: Create JNI Libraries ZIP
+        run: |
+          cd ./target/release
+          zip -r ../../armv7-linux-androideabi-jniLibs.zip ./jniLibs
+          cd -
+
+      - name: Release JNI Libraries ZIP
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./uniffi/drop/armv7-linux-androideabi-jniLibs.zip"
+
+  i686-linux-android:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-linux-android
+
+      - name: Install `cargo-ndk`
+        run: cargo install cargo-ndk
+
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build JNI Libraries
+        run: cargo ndk --output-dir ./target/release/jniLibs --target i686-linux-android build --release
+
+      - name: Create JNI Libraries ZIP
+        run: |
+          cd ./target/release
+          zip -r ../../i686-linux-android-jniLibs.zip ./jniLibs
+          cd -
+
+      - name: Release JNI Libraries ZIP
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./uniffi/drop/i686-linux-android-jniLibs.zip"
+
+  x86_64-linux-android:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-linux-android
+
+      - name: Install `cargo-ndk`
+        run: cargo install cargo-ndk
+
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build JNI Libraries
+        run: cargo ndk --output-dir ./target/release/jniLibs --target x86_64-linux-android build --release
+
+      - name: Create JNI Libraries ZIP
+        run: |
+          cd ./target/release
+          zip -r ../../x86_64-linux-android-jniLibs.zip ./jniLibs
+          cd -
+
+      - name: Release JNI Libraries ZIP
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./uniffi/drop/x86_64-linux-android-jniLibs.zip"
+
+  kotlin:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: false
+
+      - name: Build JNI Libraries
+        run: cargo run --bin uniffi-bindgen generate ./src/drop.udl --language kotlin --out-dir ./target/kotlin
+
+      - name: Create Kotlin Bindings ZIP
+        run: |
+          cd ./target/kotlin
+          zip -r ../../kotlin-bindings.zip ./dev
+          cd -
+
+      - name: Release Kotlin Bindings ZIP
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "./uniffi/drop/kotlin-bindings.zip"
