@@ -10,6 +10,7 @@ pub struct SendFilesRequest {
 
 pub struct SendFilesBubble {
     inner: sender::SendFilesBubble,
+    _runtime: tokio::runtime::Runtime,
 }
 impl SendFilesBubble {
     pub fn get_ticket(&self) -> String {
@@ -100,13 +101,16 @@ impl sender::SendFilesSubscriber for SendFilesSubscriberAdapter {
 
 pub async fn send_files(request: SendFilesRequest) -> Result<Arc<SendFilesBubble>, DropError> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| DropError::TODO(e.to_string()))?;
-    return runtime.block_on(async {
-        let adapted_request = create_adapted_request(request);
-        let bubble = sender::send_files(adapted_request)
-            .await
-            .map_err(|e| DropError::TODO(e.to_string()))?;
-        return Ok(Arc::new(SendFilesBubble { inner: bubble }));
-    });
+    let bubble = runtime
+        .block_on(async {
+            let adapted_request = create_adapted_request(request);
+            return sender::send_files(adapted_request).await;
+        })
+        .map_err(|e| DropError::TODO(e.to_string()))?;
+    return Ok(Arc::new(SendFilesBubble {
+        inner: bubble,
+        _runtime: runtime,
+    }));
 }
 
 fn create_adapted_request(request: SendFilesRequest) -> sender::SendFilesRequest {

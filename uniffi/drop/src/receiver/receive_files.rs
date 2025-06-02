@@ -12,6 +12,7 @@ pub struct ReceiveFilesRequest {
 
 pub struct ReceiveFilesBubble {
     inner: receiver::ReceiveFilesBubble,
+    _runtime: tokio::runtime::Runtime,
 }
 impl ReceiveFilesBubble {
     pub fn start(&self) {
@@ -105,13 +106,16 @@ pub async fn receive_files(
     request: ReceiveFilesRequest,
 ) -> Result<Arc<ReceiveFilesBubble>, DropError> {
     let runtime = tokio::runtime::Runtime::new().map_err(|e| DropError::TODO(e.to_string()))?;
-    return runtime.block_on(async {
-        let adapted_request = create_adapted_request(request);
-        let bubble = receiver::receive_files(adapted_request)
-            .await
-            .map_err(|e| DropError::TODO(e.to_string()))?;
-        return Ok(Arc::new(ReceiveFilesBubble { inner: bubble }));
-    });
+    let bubble = runtime
+        .block_on(async {
+            let adapted_request = create_adapted_request(request);
+            return receiver::receive_files(adapted_request).await;
+        })
+        .map_err(|e| DropError::TODO(e.to_string()))?;
+    return Ok(Arc::new(ReceiveFilesBubble {
+        inner: bubble,
+        _runtime: runtime,
+    }));
 }
 
 fn create_adapted_request(request: ReceiveFilesRequest) -> receiver::ReceiveFilesRequest {

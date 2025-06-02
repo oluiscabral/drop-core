@@ -158,7 +158,7 @@ jobs:
           allowUpdates: true
           artifacts: "./uniffi/drop/x86_64-linux-android-jniLibs.zip"
 
-  kotlin:
+  kotlin-bindings:
     runs-on: ubuntu-latest
 
     permissions:
@@ -175,7 +175,7 @@ jobs:
         with:
           save-if: false
 
-      - name: Build JNI Libraries
+      - name: Build Kotlin Bindings
         run: cargo run --bin uniffi-bindgen generate ./src/drop.udl --language kotlin --out-dir ./target/kotlin
 
       - name: Create Kotlin Bindings ZIP
