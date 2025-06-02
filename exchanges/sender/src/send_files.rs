@@ -81,34 +81,35 @@ impl SendFilesBubble {
 
 pub async fn send_files(request: SendFilesRequest) -> Result<SendFilesBubble> {
     let endpoint = Endpoint::builder().discovery_n0().bind().await?;
-    let node_addr = endpoint.node_addr().await?;
-    let confirmation: u8 = rand::rng().random_range(0..=99);
-    let handler = Arc::new(SendFilesHandler::new(
-        Profile {
-            id: Uuid::new_v4().to_string(),
-            name: request.profile.name,
-        },
-        request
-            .files
-            .into_iter()
-            .map(|f| {
-                let data = SenderFileDataAdapter { inner: f.data };
-                return File {
-                    id: Uuid::new_v4().to_string(),
-                    name: f.name,
-                    data: Arc::new(data),
-                };
-            })
-            .collect(),
-    ));
-    let router = Router::builder(endpoint)
-        .accept([confirmation], handler.clone())
-        .spawn()
-        .await?;
-    return Ok(SendFilesBubble::new(
-        NodeTicket::new(node_addr).to_string(),
-        confirmation,
-        router,
-        handler,
-    ));
+    todo!();
+    // let node_addr = endpoint.node_addr().await?;
+    // let confirmation: u8 = rand::rng().random_range(0..=99);
+    // let handler = Arc::new(SendFilesHandler::new(
+    //     Profile {
+    //         id: Uuid::new_v4().to_string(),
+    //         name: request.profile.name,
+    //     },
+    //     request
+    //         .files
+    //         .into_iter()
+    //         .map(|f| {
+    //             let data = SenderFileDataAdapter { inner: f.data };
+    //             return File {
+    //                 id: Uuid::new_v4().to_string(),
+    //                 name: f.name,
+    //                 data: Arc::new(data),
+    //             };
+    //         })
+    //         .collect(),
+    // ));
+    // let router = Router::builder(endpoint)
+    //     .accept([confirmation], handler.clone())
+    //     .spawn()
+    //     .await?;
+    // return Ok(SendFilesBubble::new(
+    //     NodeTicket::new(node_addr).to_string(),
+    //     confirmation,
+    //     router,
+    //     handler,
+    // ));
 }
