@@ -15,8 +15,19 @@ pub struct ReceiveFilesBubble {
     _runtime: tokio::runtime::Runtime,
 }
 impl ReceiveFilesBubble {
-    pub fn start(&self) {
-        return self.inner.start();
+    pub async fn start(&self) -> Result<Vec<ReceiverFile>, DropError> {
+        return Ok(self
+            .inner
+            .start()
+            .await
+            .map_err(|e| DropError::TODO(e.to_string()))?
+            .into_iter()
+            .map(|f| ReceiverFile {
+                id: f.id,
+                name: f.name,
+                data: Arc::new(ReceiverFileData { inner: f.data }),
+            })
+            .collect::<Vec<ReceiverFile>>());
     }
 
     pub fn cancel(&self) {
@@ -29,21 +40,6 @@ impl ReceiveFilesBubble {
 
     pub fn is_cancelled(&self) -> bool {
         return self.inner.is_cancelled();
-    }
-
-    pub async fn get_files(&self) -> Result<Vec<ReceiverFile>, DropError> {
-        return Ok(self
-            .inner
-            .get_files()
-            .await
-            .map_err(|e| DropError::TODO(e.to_string()))?
-            .into_iter()
-            .map(|f| ReceiverFile {
-                id: f.id,
-                name: f.name,
-                data: Arc::new(ReceiverFileData { inner: f.data }),
-            })
-            .collect::<Vec<ReceiverFile>>());
     }
 
     pub fn subscribe(&self, subscriber: Arc<dyn ReceiveFilesSubscriber>) {

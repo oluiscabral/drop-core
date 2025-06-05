@@ -1,5 +1,3 @@
-// TODO: move interactors to different modules
-
 mod handler;
 
 use crate::{SenderFile, SenderFileDataAdapter, SenderProfile};
@@ -56,7 +54,11 @@ impl SendFilesBubble {
     }
 
     pub fn is_finished(&self) -> bool {
-        return self.router.is_shutdown() || self.handler.is_finished();
+        let is_finished = self.router.is_shutdown() || self.handler.is_finished();
+        if is_finished {
+            let _ = self.router.shutdown();
+        }
+        return is_finished;
     }
 
     pub fn is_connected(&self) -> bool {

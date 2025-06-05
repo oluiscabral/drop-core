@@ -69,12 +69,11 @@ dictionary ReceiveFilesRequest {
     ReceiverProfile profile;
 };
 interface ReceiveFilesBubble {
-    void start();
+    [Throws=DropError, Async]
+    sequence<ReceiverFile> start();
     void cancel();
     boolean is_finished();
     boolean is_cancelled();
-    [Throws=DropError, Async]
-    sequence<ReceiverFile> get_files();
     void subscribe(ReceiveFilesSubscriber subscriber);
     void unsubscribe(ReceiveFilesSubscriber subscriber);
 };

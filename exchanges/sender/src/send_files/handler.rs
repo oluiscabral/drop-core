@@ -1,10 +1,8 @@
-// TODO: HANDLE ERRORS
-
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use common::{FileProjection, HandshakeFile, HandshakeProfile, ReceiverHandshake, SenderHandshake};
 use entities::{File, Profile};
 use iroh::{
-    endpoint::{Connection, RecvStream, SendStream},
+    endpoint::{Connection, RecvStream, SendStream, VarInt},
     protocol::ProtocolHandler,
 };
 use std::{
@@ -13,16 +11,6 @@ use std::{
     pin::Pin,
     sync::{Arc, RwLock, atomic::AtomicBool},
 };
-
-struct Carrier {
-    pub profile: Profile,
-    pub files: Vec<File>,
-    pub connection: Connection,
-    pub stream: SendStream,
-    pub their_stream: RecvStream,
-    pub is_finished: Arc<AtomicBool>,
-    pub subscribers: HashMap<String, Arc<dyn SendFilesSubscriber>>,
-}
 
 pub trait SendFilesSubscriber: Send + Sync {
     fn get_id(&self) -> String;
@@ -46,41 +34,39 @@ pub struct SendFilesProfile {
 }
 
 pub struct SendFilesHandler {
+    is_consumed: AtomicBool,
+    is_finished: Arc<AtomicBool>,
     profile: Profile,
     files: Vec<File>,
-    // TODO: POSSIBLY USE `Mutex<Option<bool>>` instead?
-    is_consumed: AtomicBool,
-    // TODO: POSSIBLY USE `Mutex<Option<bool>>` instead?
-    is_finished: Arc<AtomicBool>,
-    subscribers: RwLock<HashMap<String, Arc<dyn SendFilesSubscriber>>>,
+    subscribers: Arc<RwLock<HashMap<String, Arc<dyn SendFilesSubscriber>>>>,
 }
 impl Debug for SendFilesHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SendFilesHandler")
-            .field("profile", &self.profile)
-            .field("files", &self.files)
             .field("is_consumed", &self.is_consumed)
             .field("is_finished", &self.is_finished)
+            .field("profile", &self.profile)
+            .field("files", &self.files)
             .finish()
     }
 }
 impl SendFilesHandler {
     pub fn new(profile: Profile, files: Vec<File>) -> Self {
         return Self {
-            profile,
-            files,
             is_consumed: AtomicBool::new(false),
             is_finished: Arc::new(AtomicBool::new(false)),
-            subscribers: RwLock::new(HashMap::new()),
+            profile,
+            files,
+            subscribers: Arc::new(RwLock::new(HashMap::new())),
         };
-    }
-
-    pub fn is_finished(&self) -> bool {
-        return self.is_finished.load(std::sync::atomic::Ordering::Acquire);
     }
 
     pub fn is_consumed(&self) -> bool {
         return self.is_consumed.load(std::sync::atomic::Ordering::Acquire);
+    }
+
+    pub fn is_finished(&self) -> bool {
+        return self.is_finished.load(std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn subscribe(&self, subscriber: Arc<dyn SendFilesSubscriber>) {
@@ -109,7 +95,7 @@ impl ProtocolHandler for SendFilesHandler {
             .compare_exchange(
                 false,
                 true,
-                std::sync::atomic::Ordering::Acquire,
+                std::sync::atomic::Ordering::AcqRel,
                 std::sync::atomic::Ordering::Relaxed,
             )
             .unwrap_or(true);
@@ -131,148 +117,150 @@ impl ProtocolHandler for SendFilesHandler {
         &self,
         connection: iroh::endpoint::Connection,
     ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>> {
-        let profile = self.profile.clone();
-        let files = self.files.clone();
-        let is_finished = self.is_finished.clone();
-        let subscribers = self.subscribers.read().unwrap().clone();
+        let carrier = Carrier {
+            is_finished: self.is_finished.clone(),
+            limiter: 1024, // TODO: FLEXIBILIZE CHUNK LIMITER
+            profile: self.profile.clone(),
+            connection,
+            files: self.files.clone(),
+            subscribers: self.subscribers.clone(),
+        };
         return Box::pin(async move {
-            // TODO: RECEIVE THEIR HANDSHAKE
-            let (stream, their_stream) = connection.accept_bi().await?;
-            let mut carrier = Carrier {
-                profile,
-                files,
-                connection,
-                stream,
-                their_stream,
-                is_finished,
-                subscribers,
-            };
-            receive_handshake(&mut carrier).await?;
-            send_handshake(&mut carrier).await?;
-            send_files(&mut carrier).await?;
-            finish(&mut carrier).await?;
+            carrier.greet().await?;
+            carrier.send_files().await?;
+            carrier.finish();
             return Ok(());
         });
     }
 }
 
-async fn receive_handshake(carrier: &mut Carrier) -> Result<()> {
-    let mut their_handshake_len_raw = [0u8; 4];
-    carrier
-        .their_stream
-        .read_exact(&mut their_handshake_len_raw)
-        .await?;
-    let their_handshake_len: u32 = u32::from_be_bytes(their_handshake_len_raw);
-    let mut their_handshake_raw = vec![0u8; their_handshake_len as usize];
-    carrier
-        .their_stream
-        .read_exact(&mut their_handshake_raw)
-        .await?;
-    let their_handshake: ReceiverHandshake =
-        serde_json::from_slice(their_handshake_raw.as_slice())?;
-    carrier.subscribers.iter().for_each(|(_, s)| {
-        s.notify_connecting(SendFilesConnectingEvent {
-            receiver: SendFilesProfile {
-                id: their_handshake.profile.id.clone(),
-                name: their_handshake.profile.name.clone(),
+struct Carrier {
+    pub is_finished: Arc<AtomicBool>,
+    pub limiter: u32,
+    pub profile: Profile,
+    pub connection: Connection,
+    pub files: Vec<File>,
+    pub subscribers: Arc<RwLock<HashMap<String, Arc<dyn SendFilesSubscriber>>>>,
+}
+impl Carrier {
+    async fn greet(&self) -> Result<()> {
+        let mut bi = self.connection.accept_bi().await?;
+        self.send_handshake(&mut bi).await?;
+        self.receive_handshake(&mut bi).await?;
+        bi.0.finish()?;
+        bi.0.stopped().await?;
+        return Ok(());
+    }
+
+    async fn send_handshake(&self, bi: &mut (SendStream, RecvStream)) -> Result<()> {
+        let handshake = SenderHandshake {
+            profile: HandshakeProfile {
+                id: self.profile.id.clone(),
+                name: self.profile.name.clone(),
             },
-        });
-    });
-    return Ok(());
-}
+            files: self
+                .files
+                .iter()
+                .map(|f| HandshakeFile {
+                    id: f.id.clone(),
+                    name: f.name.clone(),
+                    len: f.data.len(),
+                })
+                .collect(),
+        };
+        let serialized_handshake = serde_json::to_vec(&handshake).unwrap();
+        let serialized_handshake_len = serialized_handshake.len() as u32;
+        let serialized_handshake_header = serialized_handshake_len.to_be_bytes();
+        bi.0.write_all(&serialized_handshake_header).await?;
+        bi.0.write_all(&serialized_handshake).await?;
+        return Ok(());
+    }
 
-async fn send_handshake(carrier: &mut Carrier) -> Result<()> {
-    let handshake = SenderHandshake {
-        profile: HandshakeProfile {
-            id: carrier.profile.id.clone(),
-            name: carrier.profile.name.clone(),
-        },
-        files: carrier
-            .files
-            .iter()
-            .map(|f| HandshakeFile {
-                id: f.id.clone(),
-                name: f.name.clone(),
-                len: f.data.len(),
-            })
-            .collect(),
-    };
-    let my_handshake_serialized = serde_json::to_vec(&handshake).unwrap();
-    // TODO: LIMIT HOW MUCH FILES IT IS POSSIBLE TO SEND
-    let my_handshake_serialized_len = my_handshake_serialized.len() as u32;
-    let my_handshake_serialized_len_bytes = my_handshake_serialized_len.to_be_bytes();
-    carrier
-        .stream
-        .write_all(&my_handshake_serialized_len_bytes)
-        .await?;
-    carrier.stream.write_all(&my_handshake_serialized).await?;
-    return Ok(());
-}
-
-async fn send_files(carrier: &mut Carrier) -> Result<()> {
-    // TODO: LIMIT CHUNK LEN **NEAR** U16, BECAUSE JSON TAKES MORE SPACE
-    // TODO: OPTIMIZE
-    let chunk_len: u16 = 1024; // TODO: FLEXIBILIZE CHUNK LEN
-    for f in &carrier.files {
-        let mut is_finished = false;
-        let mut sent = 0;
-        let mut remaining = f.data.len();
-        carrier.subscribers.iter().for_each(|(_, s)| {
-            s.notify_sending(SendFilesSendingEvent {
-                name: f.name.clone(),
-                sent,
-                remaining,
+    async fn receive_handshake(&self, bi: &mut (SendStream, RecvStream)) -> Result<()> {
+        let mut serialized_handshake_header = [0u8; 4];
+        bi.1.read_exact(&mut serialized_handshake_header).await?;
+        let serialized_handshake_len = u32::from_be_bytes(serialized_handshake_header);
+        let mut serialized_handshake = vec![0u8; serialized_handshake_len as usize];
+        bi.1.read_exact(&mut serialized_handshake).await?;
+        let handshake: ReceiverHandshake = serde_json::from_slice(&serialized_handshake)?;
+        self.subscribers.read().unwrap().iter().for_each(|(_, s)| {
+            s.notify_connecting(SendFilesConnectingEvent {
+                receiver: SendFilesProfile {
+                    id: handshake.profile.id.clone(),
+                    name: handshake.profile.name.clone(),
+                },
             });
         });
-        loop {
-            let mut chunk = Vec::new();
-            for _ in 0..chunk_len {
-                let b = f.data.read();
-                if b.is_none() {
-                    is_finished = true;
-                    break;
-                }
-                chunk.push(b.unwrap());
-            }
-            let projection = FileProjection {
-                id: f.id.clone(),
-                data: chunk.to_vec(),
-            };
-            let serialized_projection = serde_json::to_vec(&projection).unwrap();
-            let serialized_projection_len = serialized_projection.len() as u16;
-            let serialized_projection_len_bytes = serialized_projection_len.to_be_bytes();
-            carrier
-                .stream
-                .write_all(&serialized_projection_len_bytes)
-                .await?;
-            carrier.stream.write_all(&serialized_projection).await?;
+        return Ok(());
+    }
 
-            sent += chunk.len() as u64;
-            remaining -= chunk.len() as u64;
-            carrier.subscribers.iter().for_each(|(_, s)| {
+    async fn send_files(&self) -> Result<()> {
+        for file in &self.files {
+            let mut sent = 0;
+            let mut remaining = file.data.len();
+            self.subscribers.read().unwrap().iter().for_each(|(_, s)| {
                 s.notify_sending(SendFilesSendingEvent {
-                    name: f.name.clone(),
+                    name: file.name.clone(),
                     sent,
                     remaining,
                 });
             });
-
-            if is_finished {
-                break;
+            loop {
+                let projection = self.read_next_projection(file);
+                if projection.is_none() {
+                    break;
+                }
+                let projection = projection.unwrap();
+                let projection_data_len = projection.data.len() as u64;
+                let mut uni = self.connection.open_uni().await?;
+                let serialized_projection = serde_json::to_vec(&projection).unwrap();
+                let serialized_projection_len = serialized_projection.len() as u16;
+                let serialized_projection_header = serialized_projection_len.to_be_bytes();
+                uni.write_all(&serialized_projection_header).await?;
+                uni.write_all(&serialized_projection).await?;
+                uni.finish()?;
+                sent += projection_data_len;
+                if remaining >= projection_data_len {
+                    remaining -= projection_data_len
+                } else {
+                    remaining = 0
+                }
+                self.subscribers.read().unwrap().iter().for_each(|(_, s)| {
+                    s.notify_sending(SendFilesSendingEvent {
+                        name: file.name.clone(),
+                        sent,
+                        remaining,
+                    });
+                });
+                uni.stopped().await?;
             }
         }
+        self.connection
+            .close(VarInt::from_u32(200), String::from("Finished.").as_bytes());
+        return Ok(());
     }
-    return Ok(());
-}
 
-async fn finish(carrier: &mut Carrier) -> Result<()> {
-    carrier.stream.finish()?;
-    carrier.stream.stopped().await?;
-    carrier
-        .connection
-        .close(iroh::endpoint::VarInt::from_u32(0), &[0]);
-    carrier
-        .is_finished
-        .store(true, std::sync::atomic::Ordering::Release);
-    return Ok(());
+    fn read_next_projection(&self, file: &File) -> Option<FileProjection> {
+        let mut data = Vec::new();
+        for _ in 0..self.limiter {
+            let b = file.data.read();
+            if b.is_none() {
+                break;
+            }
+            data.push(b.unwrap());
+        }
+        if data.len() == 0 {
+            return None;
+        }
+        return Some(FileProjection {
+            id: file.id.clone(),
+            data,
+        });
+    }
+
+    fn finish(&self) -> () {
+        return self
+            .is_finished
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
