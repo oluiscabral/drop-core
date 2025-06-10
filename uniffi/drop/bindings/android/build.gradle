@@ -1,0 +1,96 @@
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+    google()
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+        google()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.3'
+    }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'maven-publish'
+
+android {
+    compileSdk 36
+    namespace 'dev.arkbuilders.drop'
+    ndkVersion '29.0.13113456'
+
+    defaultConfig {
+        minSdkVersion 33
+        targetSdkVersion 36
+        externalNativeBuild {
+            ndkBuild {}
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java']
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
+}
+
+publishing {
+    publications {
+        release(MavenPublication) {
+            groupId = 'dev.arkbuilders'
+            artifactId = 'drop'
+            version = project.findProperty('releaseVersion') ?: System.getenv('RELEASE_VERSION')
+            afterEvaluate {
+                from components.release
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri('https://maven.pkg.github.com/oluiscabral/drop-core')
+            credentials {
+                username = project.findProperty('gpr.user') ?: System.getenv('GITHUB_ACTOR')
+                password = project.findProperty('gpr.key') ?: System.getenv('GITHUB_TOKEN')
+            }
+        }
+    }
+}
+
+tasks.register('generateDropBindings', Exec) {
+    workingDir '../..'
+    commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl',
+            '--language', 'kotlin', '--out-dir', './bindings/android/src/main/java'
+    environment 'RUST_BACKTRACE', '1'
+}
+
+tasks.register('buildDropJNILibs', Exec) {
+    workingDir = file('../..')
+    //environment 'ANDROID_NDK_HOME', android.ndkDirectory.absolutePath
+    commandLine 'cargo', 'ndk',
+            '--output-dir', './bindings/android/src/main/jniLibs',
+            '--target', 'aarch64-linux-android',
+            '--target', 'armv7-linux-androideabi',
+            '--target', 'i686-linux-android',
+            '--target', 'x86_64-linux-android',
+            'build', '--release'
+}
+
+preBuild.dependsOn(generateDropBindings, buildDropJNILibs)
+
+tasks.configureEach { task ->
+    if (task.name.startsWith('publish')) {
+        task.dependsOn tasks.named('build')
+    }
+}

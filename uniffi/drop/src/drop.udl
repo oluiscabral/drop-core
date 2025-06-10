@@ -54,23 +54,14 @@ dictionary SendFilesProfile {
 dictionary ReceiverProfile {
     string name;
 };
-dictionary ReceiverFile {
-    string id;
-    string name;
-    ReceiverFileData data;
-};
-interface ReceiverFileData {
-    u64 len();
-    u8? read();
-};
 dictionary ReceiveFilesRequest {
     string ticket;
     u8 confirmation;
     ReceiverProfile profile;
 };
 interface ReceiveFilesBubble {
-    [Throws=DropError, Async]
-    sequence<ReceiverFile> start();
+    [Throws=DropError]
+    void start();
     void cancel();
     boolean is_finished();
     boolean is_cancelled();
@@ -85,14 +76,20 @@ interface ReceiveFilesSubscriber {
 };
 dictionary ReceiveFilesReceivingEvent  {
     string id;
-    u64 received;
+    sequence<u8> data;
 };
 dictionary ReceiveFilesConnectingEvent   {
     ReceiveFilesProfile sender;
+    sequence<ReceiveFilesFile> files;
 };
 dictionary ReceiveFilesProfile {
     string id;
     string name;
+};
+dictionary ReceiveFilesFile {
+    string id;
+    string name;
+    u64 len;
 };
 
 
