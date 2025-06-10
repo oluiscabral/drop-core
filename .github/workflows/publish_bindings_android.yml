@@ -1,0 +1,54 @@
+name: Publish Bindings for Android
+
+on:
+  push:
+    tags:
+      - "bindings.android.v*.*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    defaults:
+      run:
+        working-directory: ./uniffi/drop/bindings/android
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - name: Install NDK
+        run: cargo install cargo-ndk
+
+      - name: Install JDK
+        uses: actions/setup-java@v4.7.1
+        with:
+          distribution: "temurin"
+          java-version: "22"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          link-to-sdk: true
+          ndk-version: r29-beta2
+
+      - name: Publish Bindings Android
+        run: |
+          export RELEASE_VERSION=$(echo "${{ github.ref_name }}" | cut -c19-)
+          gradle publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -135,12 +135,12 @@ impl ProtocolHandler for SendFilesHandler {
 }
 
 struct Carrier {
-    pub is_finished: Arc<AtomicBool>,
-    pub limiter: u32,
-    pub profile: Profile,
-    pub connection: Connection,
-    pub files: Vec<File>,
-    pub subscribers: Arc<RwLock<HashMap<String, Arc<dyn SendFilesSubscriber>>>>,
+    is_finished: Arc<AtomicBool>,
+    limiter: u32,
+    profile: Profile,
+    connection: Connection,
+    files: Vec<File>,
+    subscribers: Arc<RwLock<HashMap<String, Arc<dyn SendFilesSubscriber>>>>,
 }
 impl Carrier {
     async fn greet(&self) -> Result<()> {

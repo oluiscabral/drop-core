@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::DropError;
 
-use super::{ReceiverFile, ReceiverFileData, ReceiverProfile};
+use super::ReceiverProfile;
 
 pub struct ReceiveFilesRequest {
     pub ticket: String,
@@ -12,22 +12,16 @@ pub struct ReceiveFilesRequest {
 
 pub struct ReceiveFilesBubble {
     inner: receiver::ReceiveFilesBubble,
-    _runtime: tokio::runtime::Runtime,
+    runtime: tokio::runtime::Runtime,
 }
 impl ReceiveFilesBubble {
-    pub async fn start(&self) -> Result<Vec<ReceiverFile>, DropError> {
-        return Ok(self
-            .inner
-            .start()
-            .await
-            .map_err(|e| DropError::TODO(e.to_string()))?
-            .into_iter()
-            .map(|f| ReceiverFile {
-                id: f.id,
-                name: f.name,
-                data: Arc::new(ReceiverFileData { inner: f.data }),
+    pub fn start(&self) -> Result<(), DropError> {
+        return self
+            .runtime
+            .block_on(async {
+                return self.inner.start();
             })
-            .collect::<Vec<ReceiverFile>>());
+            .map_err(|e| DropError::TODO(e.to_string()));
     }
 
     pub fn cancel(&self) {
@@ -61,16 +55,23 @@ pub trait ReceiveFilesSubscriber: Send + Sync {
 
 pub struct ReceiveFilesReceivingEvent {
     pub id: String,
-    pub received: u64,
+    pub data: Vec<u8>,
 }
 
 pub struct ReceiveFilesConnectingEvent {
     pub sender: ReceiveFilesProfile,
+    pub files: Vec<ReceiveFilesFile>,
 }
 
 pub struct ReceiveFilesProfile {
     pub id: String,
     pub name: String,
+}
+
+pub struct ReceiveFilesFile {
+    pub id: String,
+    pub name: String,
+    pub len: u64,
 }
 
 struct ReceiveFilesSubscriberAdapter {
@@ -84,7 +85,7 @@ impl receiver::ReceiveFilesSubscriber for ReceiveFilesSubscriberAdapter {
     fn notify_receiving(&self, event: receiver::ReceiveFilesReceivingEvent) {
         return self.inner.notify_receiving(ReceiveFilesReceivingEvent {
             id: event.id,
-            received: event.received,
+            data: event.data,
         });
     }
 
@@ -94,6 +95,15 @@ impl receiver::ReceiveFilesSubscriber for ReceiveFilesSubscriberAdapter {
                 id: event.sender.id,
                 name: event.sender.name,
             },
+            files: event
+                .files
+                .iter()
+                .map(|f| ReceiveFilesFile {
+                    id: f.id.clone(),
+                    name: f.name.clone(),
+                    len: f.len,
+                })
+                .collect(),
         });
     }
 }
@@ -110,7 +120,7 @@ pub async fn receive_files(
         .map_err(|e| DropError::TODO(e.to_string()))?;
     return Ok(Arc::new(ReceiveFilesBubble {
         inner: bubble,
-        _runtime: runtime,
+        runtime,
     }));
 }
 
