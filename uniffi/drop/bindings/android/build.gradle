@@ -106,9 +106,9 @@ tasks.register('buildDropJNILibs', Exec) {
     environment 'ANDROID_NDK_HOME', System.getenv('ANDROID_NDK_HOME') ?: android.ndkDirectory.absolutePath
     commandLine 'cargo', 'ndk',
             '--output-dir', './bindings/android/src/main/jniLibs',
-            '--target', 'aarch64-linux-android',
-            '--target', 'armv7-linux-androideabi',
-            '--target', 'i686-linux-android',
+            // '--target', 'aarch64-linux-android',
+            // '--target', 'armv7-linux-androideabi',
+            // '--target', 'i686-linux-android',
             '--target', 'x86_64-linux-android',
             'build', '--release'
 }
