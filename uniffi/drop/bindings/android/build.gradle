@@ -87,7 +87,7 @@ publishing {
 
 tasks.register('generateDropBindings', Exec) {
     workingDir '../..'
-    commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl', '--config', './uniffi.toml',
+    commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl',
             '--language', 'kotlin', '--out-dir', './bindings/android/src/main/kotlin'
     environment 'RUST_BACKTRACE', '1'
 }
