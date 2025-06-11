@@ -56,10 +56,10 @@ android {
 }
 
 dependencies {
-    api 'net.java.dev.jna:jna:5.17.0'
-    api 'net.java.dev.jna:jna-platform:5.14.0'
-    api 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
-    api 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
+    implementation 'net.java.dev.jna:jna:5.17.0'
+    implementation 'net.java.dev.jna:jna-platform:5.14.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 }
 
 publishing {
@@ -103,7 +103,7 @@ afterEvaluate {
 
 tasks.register('buildDropJNILibs', Exec) {
     workingDir = file('../..')
-    //environment 'ANDROID_NDK_HOME', android.ndkDirectory.absolutePath
+    environment 'ANDROID_NDK_HOME', System.getenv("ANDROID_NDK_HOME") ?: android.ndkDirectory.absolutePath
     commandLine 'cargo', 'ndk',
             '--output-dir', './bindings/android/src/main/jniLibs',
             '--target', 'aarch64-linux-android',
