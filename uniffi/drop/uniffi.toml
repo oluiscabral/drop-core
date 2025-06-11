@@ -1,3 +1,4 @@
 [bindings.kotlin]
 package_name = "dev.arkbuilders.drop"
 cdylib_name = "drop"
+omit_checksums = true
