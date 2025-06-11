@@ -48,8 +48,11 @@ jobs:
           link-to-sdk: true
           ndk-version: r29-beta2
 
+      - name: Set RELEASE_VERSION
+        run: echo 'RELEASE_VERSION=$(echo "$GITHUB_BASE_REF" | cut -c11-)' >> $GITHUB_ENV
+
       - name: Publish Bindings Android
         run: ./gradlew publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ $(echo "${{ github.ref_name }}" | cut -c11-) }}
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
