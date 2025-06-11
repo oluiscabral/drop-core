@@ -18,9 +18,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      # - uses: Swatinem/rust-cache@v2
-      #   with:
-      #     workspaces: "./uniffi/drop"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./uniffi/drop"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,6 +50,7 @@ jobs:
 
       - name: Publish Bindings Android
         run: |
+          cargo build --release
           export RELEASE_VERSION=$(echo "${{ github.ref_name }}" | cut -c11-)
           gradle publish
         env:
