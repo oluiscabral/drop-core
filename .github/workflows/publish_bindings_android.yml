@@ -49,8 +49,7 @@ jobs:
           ndk-version: r29-beta2
 
       - name: Publish Bindings Android
-        run: |
-          export RELEASE_VERSION=$(echo "${{ github.ref_name }}" | cut -c11-)
-          gradle publish
+        run: ./gradlew publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ $(echo "${{ github.ref_name }}" | cut -c11-) }}
