@@ -12,10 +12,12 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.7.3'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.21'
     }
 }
 
 apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
 apply plugin: 'maven-publish'
 
 android {
@@ -31,9 +33,17 @@ android {
         }
     }
 
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
     sourceSets {
         main {
-            java.srcDirs = ['src/main/java']
             jniLibs.srcDirs = ['src/main/jniLibs']
         }
     }
@@ -43,6 +53,13 @@ android {
             withSourcesJar()
         }
     }
+}
+
+dependencies {
+    implementation 'net.java.dev.jna:jna:5.17.0'
+    implementation 'net.java.dev.jna:jna-platform:5.14.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 }
 
 publishing {
@@ -71,8 +88,17 @@ publishing {
 tasks.register('generateDropBindings', Exec) {
     workingDir '../..'
     commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl',
-            '--language', 'kotlin', '--out-dir', './bindings/android/src/main/java'
+            '--language', 'kotlin', '--out-dir', './bindings/android/src/main/kotlin'
     environment 'RUST_BACKTRACE', '1'
+}
+
+afterEvaluate {
+    tasks.named("compileReleaseKotlin") {
+        dependsOn tasks.named("generateDropBindings")
+    }
+    tasks.named("compileDebugKotlin") {
+        dependsOn tasks.named("generateDropBindings")
+    }
 }
 
 tasks.register('buildDropJNILibs', Exec) {
