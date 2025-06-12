@@ -52,7 +52,9 @@ jobs:
         run: echo RELEASE_VERSION=$(echo $GITHUB_REF_NAME | cut -c11-) >> $GITHUB_ENV
 
       - name: Publish Bindings Android
-        run: ./gradlew publish
+        run: |
+          ./gradlew publish \
+            -Pandroid.useAndroidX=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}

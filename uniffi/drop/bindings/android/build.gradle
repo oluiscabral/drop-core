@@ -26,7 +26,7 @@ android {
     ndkVersion '29.0.13113456'
 
     defaultConfig {
-        minSdkVersion 33
+        minSdkVersion 22
         targetSdkVersion 36
         externalNativeBuild {
             ndkBuild {}
@@ -62,6 +62,7 @@ android {
 dependencies {
     compileOnly 'net.java.dev.jna:jna:5.17.0'
     compileOnly 'net.java.dev.jna:jna-platform:5.17.0'
+    implementation 'androidx.annotation:annotation:1.9.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2'
 }
@@ -91,7 +92,7 @@ publishing {
 
 tasks.register('generateDropBindings', Exec) {
     workingDir '../..'
-    commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl',
+    commandLine 'cargo', 'run', '--bin', 'uniffi-bindgen', 'generate', './src/drop.udl', '--config', './bindings/android/uniffi.toml',
             '--language', 'kotlin', '--out-dir', './bindings/android/src/main/kotlin'
     environment 'RUST_BACKTRACE', '1'
 }
