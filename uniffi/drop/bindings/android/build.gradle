@@ -53,6 +53,10 @@ android {
             withSourcesJar()
         }
     }
+
+    packaging {
+        jniLibs.pickFirsts.add("META-INF/AL2.0")
+    }
 }
 
 dependencies {
