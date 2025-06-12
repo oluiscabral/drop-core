@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./uniffi/drop"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -47,19 +49,12 @@ jobs:
           ndk-version: r29-beta2
 
       - name: Set RELEASE_VERSION
-        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#releases/v}" >> $GITHUB_ENV
-
-      - name: Set up Bindings Android
-        uses: dawidd6/action-delete-package-version@v2
-        with:
-          package_type: maven
-          package_name: dev.arkbuilders.drop
-          version: ${{ env.RELEASE_VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo RELEASE_VERSION=$(echo $GITHUB_REF_NAME | cut -c11-) >> $GITHUB_ENV
 
       - name: Publish Bindings Android
-        run: ./gradlew publish
+        run: |
+          ./gradlew publish \
+            -Pandroid.useAndroidX=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}

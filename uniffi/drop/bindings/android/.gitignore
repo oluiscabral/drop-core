@@ -1,6 +1,6 @@
 # JNILibs and bindings 
 src/main/jniLibs
-src/main/java/dev
+src/main/kotlin/dev
 
 # Gradle files
 .gradle/
