@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::Result;
 use receiver::{
-    ReceiveFilesConnectingEvent, ReceiveFilesReceivingEvent, ReceiveFilesRequest,
+    ReceiveFilesConnectingEvent, ReceiveFilesFile, ReceiveFilesReceivingEvent, ReceiveFilesRequest,
     ReceiveFilesSubscriber, ReceiverProfile, receive_files,
 };
 use sender::{
@@ -40,7 +40,18 @@ impl SendFilesSubscriber for CustomSendFilesSubscriber {
     }
 }
 
-struct CustomReceiveFilesSubscriber;
+struct CustomReceiveFilesSubscriber {
+    receiving_path: PathBuf,
+    files: RwLock<Vec<ReceiveFilesFile>>,
+}
+impl CustomReceiveFilesSubscriber {
+    pub fn new(receiving_path: PathBuf) -> Self {
+        return Self {
+            receiving_path: receiving_path,
+            files: RwLock::new(Vec::new()),
+        };
+    }
+}
 impl ReceiveFilesSubscriber for CustomReceiveFilesSubscriber {
     fn get_id(&self) -> String {
         return Uuid::new_v4().to_string();
@@ -49,8 +60,17 @@ impl ReceiveFilesSubscriber for CustomReceiveFilesSubscriber {
     fn notify_receiving(&self, event: ReceiveFilesReceivingEvent) {
         println!("RECEIVER ReceiveFilesRecevingEvent");
         println!("id: {}", event.id);
-        println!("received: {}", event.received);
+        println!("received data len: {}", event.data.len());
         println!("=====================================");
+        let files = self.files.read().unwrap();
+        let file = files.iter().find(|f| f.id == event.id).unwrap();
+        let mut file_stream = fs::File::options()
+            .create(true)
+            .append(true)
+            .open(self.receiving_path.to_path_buf().join(file.name.clone()))
+            .unwrap();
+        file_stream.write_all(&event.data).unwrap();
+        file_stream.flush().unwrap();
     }
 
     fn notify_connecting(&self, event: ReceiveFilesConnectingEvent) {
@@ -58,7 +78,9 @@ impl ReceiveFilesSubscriber for CustomReceiveFilesSubscriber {
         println!("receiver ReceiveFilesProfile");
         println!("id: {}", event.sender.id);
         println!("name: {}", event.sender.name);
+        println!("files len: {}", event.files.len());
         println!("=====================================");
+        self.files.write().unwrap().extend(event.files);
     }
 }
 
@@ -185,20 +207,11 @@ async fn run_receive_files(args: Vec<&str>) -> Result<()> {
     };
     let bubble = receive_files(request).await?;
 
-    let subscriber = CustomReceiveFilesSubscriber {};
+    let subscriber = CustomReceiveFilesSubscriber::new(receiving_path);
     bubble.subscribe(Arc::new(subscriber));
-
-    let files = bubble.start().await?;
-    for f in files {
-        let mut file = fs::File::create(receiving_path.to_path_buf().join(f.name))?;
-        loop {
-            let b = f.data.read();
-            if b.is_none() {
-                break;
-            }
-            file.write(&[b.unwrap()])?;
-        }
-    }
+    bubble.start()?;
+    tokio::signal::ctrl_c().await?;
+    bubble.cancel();
     return Ok(());
 }
 
